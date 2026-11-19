@@ -1,0 +1,304 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>StudyFlow | Dashboard</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+          <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+        <h2>StudyFlow</h2>
+
+        <nav>
+            <a href="{{ url_for('dashboard') }}" class="active">Dashboard</a>
+            <a href="#tasks">My Tasks</a>
+            <a href="#add-task">Add Task</a>
+            <a href="{{ url_for('study_calendar') }}">Study Calendar</a>
+            <a href="{{ url_for('daily_planner') }}">Daily Planner</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </nav>
+
+        <p class="sidebar-bottom">Stay focused. Keep growing.</p>
+
+    </aside>
+
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+        <!-- Header -->
+        <header>
+            <div>
+                <h1>Dashboard</h1>
+                <p>Welcome back, {{ username }}! Let's organize your learning.</p>
+            </div>
+
+            <div class="date">
+                StudyFlow Planner
+            </div>
+        </header>
+
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <p class="flash-message">{{ message }}</p>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+
+        <!-- Statistics -->
+        <section class="stats">
+
+            <div class="stat-card">
+                <p>Total Tasks</p>
+                <h2>{{ total }}</h2>
+            </div>
+
+            <div class="stat-card">
+                <p>Completed</p>
+                <h2>{{ completed }}</h2>
+            </div>
+
+            <div class="stat-card">
+                <p>Pending</p>
+                <h2>{{ pending }}</h2>
+            </div>
+
+        </section>
+
+
+        <!-- Progress -->
+        <section class="progress-card">
+
+            <div class="progress-heading">
+                <h2>Your Progress</h2>
+                <strong>{{ progress }}%</strong>
+            </div>
+
+            <div class="progress-bar">
+                <div class="progress-fill"
+                     style="width: {{ progress }}%;">
+                </div>
+            </div>
+
+            <p>Keep going! Every completed task counts.</p>
+
+        </section>
+
+
+        <!-- Add Task -->
+        <section class="task-form" id="add-task">
+
+            <h2>Add New Study Task</h2>
+
+            <form action="{{ url_for('add_task') }}" method="POST">
+
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="Enter task name"
+                    required
+                >
+
+                <input
+                    type="text"
+                    name="subject"
+                    placeholder="Subject name"
+                    required
+                >
+
+                <label>Deadline</label>
+
+                <input
+                    type="date"
+                    name="deadline"
+                    required
+                >
+
+                <label>Priority</label>
+
+                <select name="priority" required>
+                    <option value="Low">Low</option>
+                    <option value="Medium" selected>Medium</option>
+                    <option value="High">High</option>
+                </select>
+
+                <button type="submit">+ Add Task</button>
+
+            </form>
+
+        </section>
+
+
+        <!-- My Study Tasks -->
+        <section class="task-section" id="tasks">
+
+            <h2>My Study Tasks</h2>
+
+
+            <!-- Search and Filter -->
+            <form action="{{ url_for('dashboard') }}"
+                  method="GET"
+                  class="filter-form">
+
+                <!-- Search -->
+                <input
+                    type="text"
+                    name="search"
+                    placeholder="Search task or subject..."
+                    value="{{ search }}"
+                >
+
+
+                <!-- Priority Filter -->
+                <select name="priority">
+
+                    <option value="">All Priorities</option>
+
+                    <option value="Low"
+                        {% if priority == 'Low' %}selected{% endif %}>
+                        Low
+                    </option>
+
+                    <option value="Medium"
+                        {% if priority == 'Medium' %}selected{% endif %}>
+                        Medium
+                    </option>
+
+                    <option value="High"
+                        {% if priority == 'High' %}selected{% endif %}>
+                        High
+                    </option>
+
+                </select>
+
+
+                <!-- Status Filter -->
+                <select name="status">
+
+                    <option value="">All Tasks</option>
+
+                    <option value="Pending"
+                        {% if status == 'Pending' %}selected{% endif %}>
+                        Pending
+                    </option>
+
+                    <option value="Completed"
+                        {% if status == 'Completed' %}selected{% endif %}>
+                        Completed
+                    </option>
+
+                </select>
+
+
+                <button type="submit">Search / Filter</button>
+
+                <a href="{{ url_for('dashboard') }}"
+                   class="clear-btn">Clear</a>
+
+            </form>
+
+
+            <!-- Display Tasks -->
+            {% if tasks %}
+
+                {% for task in tasks %}
+
+                    <div class="task-card">
+
+                        <div class="task-details">
+
+                            <h3 class="{% if task.completed %}done{% endif %}">
+                                {{ task.title }}
+                            </h3>
+
+                            <p>Subject: {{ task.subject }}</p>
+
+                            <p>
+                                Deadline: {{ task.deadline or 'Not set' }}
+                            </p>
+
+                            <span class="priority {{ task.priority|lower }}">
+                                {{ task.priority }} Priority
+                            </span>
+
+                            {% if task.completed %}
+                                <p>Completed</p>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Task Actions -->
+                        <div class="task-actions">
+
+                            <a href="{{ url_for('edit_task', task_id=task.id) }}"
+                               class="edit-btn">
+                                Edit
+                            </a>
+
+                            <a href="{{ url_for('toggle_task', task_id=task.id) }}"
+                               class="complete-btn">
+
+                                {% if task.completed %}
+                                    Undo
+                                {% else %}
+                                    Complete
+                                {% endif %}
+
+                            </a>
+
+                            <a href="{{ url_for('delete_task', task_id=task.id) }}"
+                               class="delete-btn"
+                               onclick="return confirm('Delete this task?')">
+                                Delete
+                            </a>
+
+                        </div>
+
+                    </div>
+
+                {% endfor %}
+
+
+            {% else %}
+
+                <!-- No Tasks Found -->
+                <div class="empty-state">
+
+                    <h3>No matching tasks found!</h3>
+
+                    <p>Add a new task or change your search and filters.</p>
+
+                </div>
+
+            {% endif %}
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<!-- JavaScript -->
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+
+</body>
+</html>

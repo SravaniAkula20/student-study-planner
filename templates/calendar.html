@@ -1,0 +1,226 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Study Calendar - StudyFlow</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+        <h2>StudyFlow</h2>
+
+        <nav>
+            <a href="/">Dashboard</a>
+            <a href="/#tasks">My Tasks</a>
+            <a href="/#add-task">Add Task</a>
+            <a href="/calendar" class="active">Study Calendar</a>
+        </nav>
+
+        <p class="sidebar-bottom">Stay focused. Keep growing.</p>
+
+    </aside>
+
+
+    <!-- Main content -->
+    <main class="main-content">
+
+        <header>
+            <div>
+                <h1>Study Calendar</h1>
+                <p>Plan your studies and track your deadlines.</p>
+            </div>
+
+            <div class="date">
+                Student Planner
+            </div>
+        </header>
+
+
+        <!-- Calendar -->
+        <section class="calendar-card">
+
+            <div class="calendar-heading">
+
+                <h2>{{ month_name }} {{ year }}</h2>
+
+                <div class="calendar-navigation">
+
+                    <a href="{{ url_for('study_calendar',
+                        month=previous_month,
+                        year=previous_year) }}">
+                        &#8592; Previous
+                    </a>
+
+                    <a href="{{ url_for('study_calendar') }}">
+                        Today
+                    </a>
+
+                    <a href="{{ url_for('study_calendar',
+                        month=next_month,
+                        year=next_year) }}">
+                        Next &#8594;
+                    </a>
+
+                </div>
+
+            </div>
+
+
+            <div class="calendar-grid">
+
+                <!-- Weekday headings -->
+                {% for weekday in
+                    ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
+                     'Thursday', 'Friday', 'Saturday'] %}
+
+                    <div class="calendar-weekday">
+                        {{ weekday }}
+                    </div>
+
+                {% endfor %}
+
+               
+{% for week in cal %}
+    {% for day in week %}
+
+        <div class="calendar-day">
+
+            {% if day != 0 %}
+
+                <strong>{{ day }}</strong>
+
+                {% if day in tasks_by_date %}
+
+                    {% for task in tasks_by_date[day] %}
+
+                        <p class="calendar-task">
+                            {{ task.title }}
+                        </p>
+
+                    {% endfor %}
+
+                {% endif %}
+
+            {% endif %}
+
+        </div>
+
+    {% endfor %}
+{% endfor %}
+
+                <!-- Calendar dates -->
+                {% for week in weeks %}
+
+                    {% for day in week %}
+
+                        <div class="calendar-day
+                            {% if not day.is_current_month %}other-month{% endif %}
+                            {% if day.is_today %}today{% endif %}">
+
+                            <span class="day-number">
+                                {{ day.day }}
+                            </span>
+
+                            {% for task in day.tasks %}
+
+                                <div class="calendar-task
+                                    {% if task.completed %}calendar-completed{% endif %}">
+
+                                    {{ task.title }}
+
+                                </div>
+
+                            {% endfor %}
+
+                        </div>
+
+                    {% endfor %}
+
+                {% endfor %}
+
+            </div>
+
+        </section>
+
+
+        <!-- Overdue tasks -->
+        <section class="deadline-card">
+
+            <h2>Overdue Tasks</h2>
+
+            {% if overdue_tasks %}
+
+                {% for task in overdue_tasks %}
+
+                    <div class="deadline-item overdue-item">
+
+                        <strong>{{ task.title }}</strong>
+
+                        <span>{{ task.deadline }}</span>
+
+                        <p>Subject: {{ task.subject }}</p>
+
+                    </div>
+
+                {% endfor %}
+
+            {% else %}
+
+                <p class="no-deadlines">
+                    No overdue tasks. Great job!
+                </p>
+
+            {% endif %}
+
+        </section>
+
+
+        <!-- Upcoming tasks -->
+        <section class="deadline-card">
+
+            <h2>Upcoming Deadlines</h2>
+
+            {% if upcoming_tasks %}
+
+                {% for task in upcoming_tasks %}
+
+                    <div class="deadline-item">
+
+                        <strong>{{ task.title }}</strong>
+
+                        <span>{{ task.deadline }}</span>
+
+                        <p>Subject: {{ task.subject }}</p>
+
+                    </div>
+
+                {% endfor %}
+
+            {% else %}
+
+                <p class="no-deadlines">
+                    No upcoming deadlines.
+                </p>
+
+            {% endif %}
+
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>

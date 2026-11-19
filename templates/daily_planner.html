@@ -1,0 +1,284 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Planner | StudyFlow</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/dashboard.css') }}">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/daily_planner.css') }}">
+</head>
+
+<body>
+
+<div class="container">
+
+    <aside class="sidebar">
+        <h2>StudyFlow</h2>
+
+        <nav>
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('dashboard') }}">My Tasks</a>
+            <a href="{{ url_for('daily_planner') }}" class="active">
+                Daily Planner
+            </a>
+            <a href="{{ url_for('study_calendar') }}">Study Calendar</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </nav>
+    </aside>
+
+    <main class="daily-main">
+
+        <header class="daily-header">
+            <div>
+                <h1>Daily Planner</h1>
+                <p>Plan your day, stay focused and achieve your goals.</p>
+            </div>
+
+            <div class="welcome-user">
+                Hello, {{ username }}!
+            </div>
+        </header>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="flash">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- DATE SELECTOR -->
+
+        <section class="date-panel">
+            <div>
+                <h2>Plan Your Day</h2>
+                <p>Select a date to view or create your daily schedule.</p>
+            </div>
+
+            <form method="GET"
+                  action="{{ url_for('daily_planner') }}"
+                  class="date-selector">
+
+                <input type="date"
+                       name="date"
+                       value="{{ selected_date }}"
+                       required>
+
+                <button type="submit">View Day</button>
+            </form>
+        </section>
+
+        <!-- DAILY STATISTICS -->
+
+        <section class="daily-stats">
+
+            <div class="daily-stat-card">
+                <span>Total Plans</span>
+                <h2>{{ total }}</h2>
+            </div>
+
+            <div class="daily-stat-card">
+                <span>Completed</span>
+                <h2>{{ completed }}</h2>
+            </div>
+
+            <div class="daily-stat-card">
+                <span>Pending</span>
+                <h2>{{ pending }}</h2>
+            </div>
+
+        </section>
+
+        <!-- DAILY PROGRESS -->
+
+        <section class="daily-progress">
+            <div class="progress-heading">
+                <h3>Today's Progress</h3>
+                <strong>{{ progress }}%</strong>
+            </div>
+
+            <div class="progress-track">
+                <div class="progress-fill"
+                     style="width: {{ progress }}%">
+                </div>
+            </div>
+
+            <p>{{ completed }} out of {{ total }} plans completed</p>
+        </section>
+
+        <!-- ADD DAILY PLAN -->
+
+        <section class="daily-form-card">
+
+            <h2>Add a Daily Plan</h2>
+            <p>Create a time-based schedule for your selected date.</p>
+
+            <form method="POST"
+                  action="{{ url_for('daily_planner', date=selected_date) }}">
+
+                <div class="daily-form-grid">
+
+                    <div>
+                        <label>Task Title</label>
+                        <input type="text"
+                               name="title"
+                               placeholder="Example: Learn Dynamic Programming"
+                               required>
+                    </div>
+
+                    <div>
+                        <label>Subject</label>
+                        <input type="text"
+                               name="subject"
+                               placeholder="Example: DSA"
+                               required>
+                    </div>
+
+                    <div>
+                        <label>Date</label>
+                        <input type="date"
+                               name="plan_date"
+                               value="{{ selected_date }}"
+                               required>
+                    </div>
+
+                    <div>
+                        <label>Start Time</label>
+                        <input type="time"
+                               name="start_time"
+                               required>
+                    </div>
+
+                    <div>
+                        <label>End Time</label>
+                        <input type="time"
+                               name="end_time"
+                               required>
+                    </div>
+
+                </div>
+
+                <div>
+                    <label>Notes (Optional)</label>
+                    <textarea name="notes"
+                              rows="3"
+                              placeholder="What do you want to complete?"></textarea>
+                </div>
+
+                <button type="submit" class="add-plan-btn">
+                    + Add to My Day
+                </button>
+
+            </form>
+        </section>
+
+        <!-- SCHEDULE -->
+
+        <section class="schedule-section">
+
+            <h2>Your Daily Schedule</h2>
+
+            <p class="schedule-date">
+                Schedule for {{ selected_date }}
+            </p>
+
+            {% if plans %}
+
+                <div class="schedule-list">
+
+                    {% for plan in plans %}
+
+                        <div class="schedule-card
+                            {% if plan['completed'] %}plan-completed{% endif %}">
+
+                            <div class="schedule-time">
+                                <span>{{ plan['start_time'] }}</span>
+                                <span class="time-dash">to</span>
+                                <span>{{ plan['end_time'] }}</span>
+                            </div>
+
+                            <div class="schedule-details">
+
+                                <h3>{{ plan['title'] }}</h3>
+
+                                <p>{{ plan['subject'] }}</p>
+
+                                {% if plan['notes'] %}
+                                    <p class="plan-notes">
+                                        {{ plan['notes'] }}
+                                    </p>
+                                {% endif %}
+
+                                <span class="plan-status">
+                                    {% if plan['completed'] %}
+                                        Completed
+                                    {% else %}
+                                        Pending
+                                    {% endif %}
+                                </span>
+
+                            </div>
+
+                            <div class="schedule-actions">
+
+                                <form method="POST"
+                                      action="{{ url_for('toggle_daily_plan', plan_id=plan['id']) }}">
+
+                                    <button type="submit" class="complete-btn">
+                                        {% if plan['completed'] %}
+                                            Undo
+                                        {% else %}
+                                            Complete
+                                        {% endif %}
+                                    </button>
+
+                                </form>
+
+                                <a class="edit-btn"
+                                   href="{{ url_for('edit_daily_plan', plan_id=plan['id']) }}">
+                                    Edit
+                                </a>
+
+                                <form method="POST"
+                                      action="{{ url_for('delete_daily_plan', plan_id=plan['id']) }}"
+                                      onsubmit="return confirm('Delete this daily plan?');">
+
+                                    <button type="submit" class="delete-btn">
+                                        Delete
+                                    </button>
+
+                                </form>
+
+                            </div>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            {% else %}
+
+                <div class="daily-empty-state">
+                    <h3>No plans for this day yet!</h3>
+                    <p>Add your first activity and organize your day.</p>
+                </div>
+
+            {% endif %}
+
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,10 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+database.db
+studyflow.db
+.env
+.DS_Store
+database.db
+studyflow.db

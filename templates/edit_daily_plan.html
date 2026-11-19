@@ -1,0 +1,97 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Daily Plan | StudyFlow</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/dashboard.css') }}">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/daily_planner.css') }}">
+</head>
+
+<body>
+
+<div class="container">
+
+    <aside class="sidebar">
+        <h2>StudyFlow</h2>
+
+        <nav>
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('daily_planner') }}" class="active">
+                Daily Planner
+            </a>
+            <a href="{{ url_for('calendar') }}">Study Calendar</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </nav>
+    </aside>
+
+    <main class="daily-main">
+
+        <header>
+            <h1>Edit Daily Plan</h1>
+            <p>Update your scheduled activity.</p>
+        </header>
+
+        <section class="daily-form-card">
+
+            <form method="POST">
+
+                <label>Task Title</label>
+                <input type="text"
+                       name="title"
+                       value="{{ plan['title'] }}"
+                       required>
+
+                <label>Subject</label>
+                <input type="text"
+                       name="subject"
+                       value="{{ plan['subject'] }}"
+                       required>
+
+                <label>Date</label>
+                <input type="date"
+                       name="plan_date"
+                       value="{{ plan['plan_date'] }}"
+                       required>
+
+                <label>Start Time</label>
+                <input type="time"
+                       name="start_time"
+                       value="{{ plan['start_time'] }}"
+                       required>
+
+                <label>End Time</label>
+                <input type="time"
+                       name="end_time"
+                       value="{{ plan['end_time'] }}"
+                       required>
+
+                <label>Notes</label>
+                <textarea name="notes"
+                          rows="4">{{ plan['notes'] or '' }}</textarea>
+
+                <button type="submit">Save Changes</button>
+
+                <a href="{{ url_for('daily_planner', date=plan['plan_date']) }}"
+                   class="edit-cancel">
+                    Cancel
+                </a>
+
+            </form>
+
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>
