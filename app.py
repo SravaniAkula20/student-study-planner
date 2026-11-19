@@ -1,8 +1,7 @@
 
 import calendar
-import sqlite3
 import os
-
+import sqlite3
 from datetime import date, datetime
 from functools import wraps
 
@@ -24,18 +23,62 @@ app.secret_key = os.environ.get(
     "studyflow-development-key-change-before-deployment"
 )
 
-DATABASE = "studyflow.db"
+# Local computer uses SQLite.
+# Render uses PostgreSQL through DATABASE_URL.
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+USE_POSTGRES = bool(DATABASE_URL)
+
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgres://", "postgresql://", 1
+    )
 
 
 # ==========================================
 # DATABASE CONNECTION
 # ==========================================
 
+class DatabaseConnection:
+
+    def __init__(self):
+
+        if USE_POSTGRES:
+
+            # Import PostgreSQL only when deployed.
+            import psycopg
+            from psycopg.rows import dict_row
+
+            self.connection = psycopg.connect(
+                DATABASE_URL,
+                row_factory=dict_row
+            )
+
+        else:
+
+            self.connection = sqlite3.connect("studyflow.db")
+            self.connection.row_factory = sqlite3.Row
+
+            self.connection.execute(
+                "PRAGMA foreign_keys = ON"
+            )
+
+    def execute(self, query, params=()):
+
+        if USE_POSTGRES:
+            query = query.replace("?", "%s")
+
+        return self.connection.execute(query, params)
+
+    def commit(self):
+        self.connection.commit()
+
+    def close(self):
+        self.connection.close()
+
+
 def get_db():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return DatabaseConnection()
 
 
 # ==========================================
@@ -46,47 +89,85 @@ def create_table():
 
     conn = get_db()
 
-    # Users table
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL
-        )
-    """)
+    if USE_POSTGRES:
 
-    # Existing tasks table
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            subject TEXT NOT NULL,
-            deadline TEXT NOT NULL,
-            priority TEXT NOT NULL,
-            completed INTEGER DEFAULT 0,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-                ON DELETE CASCADE
-        )
-    """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id BIGSERIAL PRIMARY KEY,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL
+            )
+        """)
 
-    # NEW: Daily plans table
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS daily_plans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            subject TEXT NOT NULL,
-            plan_date TEXT NOT NULL,
-            start_time TEXT NOT NULL,
-            end_time TEXT NOT NULL,
-            notes TEXT,
-            completed INTEGER DEFAULT 0,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-                ON DELETE CASCADE
-        )
-    """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL REFERENCES users(id)
+                    ON DELETE CASCADE,
+                title TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                deadline TEXT NOT NULL,
+                priority TEXT NOT NULL,
+                completed INTEGER DEFAULT 0
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_plans (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL REFERENCES users(id)
+                    ON DELETE CASCADE,
+                title TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                plan_date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                notes TEXT,
+                completed INTEGER DEFAULT 0
+            )
+        """)
+
+    else:
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                deadline TEXT NOT NULL,
+                priority TEXT NOT NULL,
+                completed INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+                    ON DELETE CASCADE
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                plan_date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                notes TEXT,
+                completed INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+                    ON DELETE CASCADE
+            )
+        """)
 
     conn.commit()
     conn.close()
@@ -102,13 +183,14 @@ def login_required(route_function):
     def wrapper(*args, **kwargs):
 
         if "user_id" not in session:
+
             flash("Please log in to continue.")
+
             return redirect(url_for("login"))
 
         return route_function(*args, **kwargs)
 
     return wrapper
-
 
 # ==========================================
 # REGISTER
@@ -139,6 +221,7 @@ def register():
         conn = get_db()
 
         try:
+
             conn.execute("""
                 INSERT INTO users (username, email, password)
                 VALUES (?, ?, ?)
@@ -147,7 +230,8 @@ def register():
             conn.commit()
 
             user = conn.execute("""
-                SELECT id, username FROM users WHERE email = ?
+                SELECT id, username FROM users
+                WHERE email = ?
             """, (email,)).fetchone()
 
             session["user_id"] = user["id"]
@@ -157,9 +241,23 @@ def register():
 
             return redirect(url_for("dashboard"))
 
-        except sqlite3.IntegrityError:
-            flash("This email is already registered.")
-            return redirect(url_for("register"))
+        except Exception as error:
+
+            if USE_POSTGRES:
+                import psycopg
+                is_duplicate = isinstance(
+                    error, psycopg.IntegrityError
+                )
+            else:
+                is_duplicate = isinstance(
+                    error, sqlite3.IntegrityError
+                )
+
+            if is_duplicate:
+                flash("This email is already registered.")
+                return redirect(url_for("register"))
+
+            raise
 
         finally:
             conn.close()
@@ -193,6 +291,7 @@ def login():
         if user and check_password_hash(user["password"], password):
 
             session.clear()
+
             session["user_id"] = user["id"]
             session["username"] = user["username"]
 
@@ -212,6 +311,7 @@ def login():
 def logout():
 
     session.clear()
+
     flash("You have been logged out.")
 
     return redirect(url_for("login"))
@@ -233,7 +333,7 @@ def dashboard():
 
     conn = get_db()
 
-    # Personal statistics
+    # Get only this user's tasks
     all_tasks = conn.execute("""
         SELECT * FROM tasks
         WHERE user_id = ?
@@ -245,24 +345,41 @@ def dashboard():
 
     pending = total - completed
 
-    progress = round((completed / total) * 100) if total else 0
+    progress = round(
+        (completed / total) * 100
+    ) if total else 0
 
-    # Filter tasks
-    query = "SELECT * FROM tasks WHERE user_id = ?"
+    # Build filtered task query
+    query = """
+        SELECT * FROM tasks
+        WHERE user_id = ?
+    """
+
     values = [user_id]
 
     if search:
-        query += " AND (title LIKE ? OR subject LIKE ?)"
-        values.extend([f"%{search}%", f"%{search}%"])
+
+        query += """
+            AND (title LIKE ? OR subject LIKE ?)
+        """
+
+        values.extend([
+            f"%{search}%",
+            f"%{search}%"
+        ])
 
     if priority in ["Low", "Medium", "High"]:
+
         query += " AND priority = ?"
+
         values.append(priority)
 
     if status == "Pending":
+
         query += " AND completed = 0"
 
     elif status == "Completed":
+
         query += " AND completed = 1"
 
     query += " ORDER BY deadline ASC"
@@ -299,17 +416,24 @@ def add_task():
     priority = request.form.get("priority", "")
 
     if not title or not subject or not deadline:
+
         flash("Please fill in all task fields.")
+
         return redirect(url_for("dashboard"))
 
     if priority not in ["Low", "Medium", "High"]:
+
         flash("Please select a valid priority.")
+
         return redirect(url_for("dashboard"))
 
     try:
         date.fromisoformat(deadline)
+
     except ValueError:
+
         flash("Please enter a valid deadline.")
+
         return redirect(url_for("dashboard"))
 
     conn = get_db()
@@ -352,8 +476,11 @@ def edit_task(task_id):
     """, (task_id, user_id)).fetchone()
 
     if task is None:
+
         conn.close()
+
         flash("Task not found.")
+
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
@@ -364,22 +491,36 @@ def edit_task(task_id):
         priority = request.form.get("priority", "")
 
         try:
+
             date.fromisoformat(deadline)
+
             valid_date = True
+
         except ValueError:
+
             valid_date = False
 
         if (
-            not title or not subject or not valid_date
+            not title
+            or not subject
+            or not valid_date
             or priority not in ["Low", "Medium", "High"]
         ):
+
             conn.close()
+
             flash("Please enter valid task details.")
-            return redirect(url_for("edit_task", task_id=task_id))
+
+            return redirect(
+                url_for("edit_task", task_id=task_id)
+            )
 
         conn.execute("""
             UPDATE tasks
-            SET title = ?, subject = ?, deadline = ?, priority = ?
+            SET title = ?,
+                subject = ?,
+                deadline = ?,
+                priority = ?
             WHERE id = ? AND user_id = ?
         """, (
             title,
@@ -399,7 +540,10 @@ def edit_task(task_id):
 
     conn.close()
 
-    return render_template("edit_task.html", task=task)
+    return render_template(
+        "edit_task.html",
+        task=task
+    )
 
 
 # ==========================================
@@ -467,8 +611,13 @@ def study_calendar():
     today = date.today()
     today_str = today.isoformat()
 
-    month = request.args.get("month", today.month, type=int)
-    year = request.args.get("year", today.year, type=int)
+    month = request.args.get(
+        "month", today.month, type=int
+    )
+
+    year = request.args.get(
+        "year", today.year, type=int
+    )
 
     if month < 1 or month > 12:
         month = today.month
@@ -479,17 +628,24 @@ def study_calendar():
         SELECT * FROM tasks
         WHERE user_id = ? AND deadline LIKE ?
         ORDER BY deadline
-    """, (user_id, f"{year}-{month:02d}-%")).fetchall()
+    """, (
+        user_id,
+        f"{year}-{month:02d}-%"
+    )).fetchall()
 
     upcoming_tasks = conn.execute("""
         SELECT * FROM tasks
-        WHERE user_id = ? AND deadline >= ? AND completed = 0
+        WHERE user_id = ?
+        AND deadline >= ?
+        AND completed = 0
         ORDER BY deadline ASC
     """, (user_id, today_str)).fetchall()
 
     overdue_tasks = conn.execute("""
         SELECT * FROM tasks
-        WHERE user_id = ? AND deadline < ? AND completed = 0
+        WHERE user_id = ?
+        AND deadline < ?
+        AND completed = 0
         ORDER BY deadline ASC
     """, (user_id, today_str)).fetchall()
 
@@ -498,8 +654,12 @@ def study_calendar():
     tasks_by_date = {}
 
     for task in tasks:
+
         day = int(task["deadline"].split("-")[2])
-        tasks_by_date.setdefault(day, []).append(task)
+
+        tasks_by_date.setdefault(
+            day, []
+        ).append(task)
 
     cal = calendar.Calendar(
         firstweekday=6
@@ -517,7 +677,6 @@ def study_calendar():
         today=today
     )
 
-
 # ==========================================
 # DAILY PLANNER
 # ==========================================
@@ -529,13 +688,12 @@ def daily_planner():
     user_id = session["user_id"]
 
     selected_date = request.args.get(
-        "date",
-        date.today().isoformat()
+        "date", date.today().isoformat()
     )
 
-    # Validate selected date
     try:
         date.fromisoformat(selected_date)
+
     except ValueError:
         selected_date = date.today().isoformat()
 
@@ -551,37 +709,51 @@ def daily_planner():
         end_time = request.form.get("end_time", "").strip()
         notes = request.form.get("notes", "").strip()
 
-        # Validate date and time
         try:
+
             date.fromisoformat(plan_date)
 
-            start = datetime.strptime(start_time, "%H:%M")
-            end = datetime.strptime(end_time, "%H:%M")
+            start = datetime.strptime(
+                start_time, "%H:%M"
+            )
+
+            end = datetime.strptime(
+                end_time, "%H:%M"
+            )
 
             if end <= start:
                 raise ValueError
 
         except ValueError:
+
             conn.close()
+
             flash("Please enter a valid date and time range.")
-            return redirect(url_for(
-                "daily_planner",
-                date=selected_date
-            ))
+
+            return redirect(
+                url_for("daily_planner", date=selected_date)
+            )
 
         if not title or not subject:
+
             conn.close()
+
             flash("Please enter a task title and subject.")
-            return redirect(url_for(
-                "daily_planner",
-                date=plan_date
-            ))
+
+            return redirect(
+                url_for("daily_planner", date=plan_date)
+            )
 
         conn.execute("""
             INSERT INTO daily_plans
             (
-                user_id, title, subject, plan_date,
-                start_time, end_time, notes
+                user_id,
+                title,
+                subject,
+                plan_date,
+                start_time,
+                end_time,
+                notes
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
@@ -599,10 +771,9 @@ def daily_planner():
 
         flash("Daily plan added successfully!")
 
-        return redirect(url_for(
-            "daily_planner",
-            date=plan_date
-        ))
+        return redirect(
+            url_for("daily_planner", date=plan_date)
+        )
 
     # Get plans for the selected date
     plans = conn.execute("""
@@ -616,11 +787,15 @@ def daily_planner():
 
     total = len(plans)
 
-    completed = sum(plan["completed"] for plan in plans)
+    completed = sum(
+        plan["completed"] for plan in plans
+    )
 
     pending = total - completed
 
-    progress = round((completed / total) * 100) if total else 0
+    progress = round(
+        (completed / total) * 100
+    ) if total else 0
 
     conn.close()
 
@@ -640,7 +815,10 @@ def daily_planner():
 # EDIT DAILY PLAN
 # ==========================================
 
-@app.route("/daily-plan/edit/<int:plan_id>", methods=["GET", "POST"])
+@app.route(
+    "/daily-plan/edit/<int:plan_id>",
+    methods=["GET", "POST"]
+)
 @login_required
 def edit_daily_plan(plan_id):
 
@@ -657,8 +835,11 @@ def edit_daily_plan(plan_id):
     )).fetchone()
 
     if plan is None:
+
         conn.close()
+
         flash("Daily plan not found.")
+
         return redirect(url_for("daily_planner"))
 
     if request.method == "POST":
@@ -671,34 +852,43 @@ def edit_daily_plan(plan_id):
         notes = request.form.get("notes", "").strip()
 
         try:
+
             date.fromisoformat(plan_date)
 
-            start = datetime.strptime(start_time, "%H:%M")
-            end = datetime.strptime(end_time, "%H:%M")
+            start = datetime.strptime(
+                start_time, "%H:%M"
+            )
+
+            end = datetime.strptime(
+                end_time, "%H:%M"
+            )
 
             if end <= start:
                 raise ValueError
 
         except ValueError:
+
             conn.close()
+
             flash("Please enter a valid date and time range.")
-            return redirect(url_for(
-                "edit_daily_plan",
-                plan_id=plan_id
-            ))
+
+            return redirect(
+                url_for("edit_daily_plan", plan_id=plan_id)
+            )
 
         if not title or not subject:
+
             conn.close()
+
             flash("Title and subject are required.")
-            return redirect(url_for(
-                "edit_daily_plan",
-                plan_id=plan_id
-            ))
+
+            return redirect(
+                url_for("edit_daily_plan", plan_id=plan_id)
+            )
 
         conn.execute("""
             UPDATE daily_plans
-            SET
-                title = ?,
+            SET title = ?,
                 subject = ?,
                 plan_date = ?,
                 start_time = ?,
@@ -721,10 +911,9 @@ def edit_daily_plan(plan_id):
 
         flash("Daily plan updated successfully!")
 
-        return redirect(url_for(
-            "daily_planner",
-            date=plan_date
-        ))
+        return redirect(
+            url_for("daily_planner", date=plan_date)
+        )
 
     conn.close()
 
@@ -738,7 +927,10 @@ def edit_daily_plan(plan_id):
 # COMPLETE / UNDO DAILY PLAN
 # ==========================================
 
-@app.route("/daily-plan/toggle/<int:plan_id>", methods=["POST"])
+@app.route(
+    "/daily-plan/toggle/<int:plan_id>",
+    methods=["POST"]
+)
 @login_required
 def toggle_daily_plan(plan_id):
 
@@ -746,7 +938,6 @@ def toggle_daily_plan(plan_id):
 
     conn = get_db()
 
-    # Find the plan belonging to this user
     plan = conn.execute("""
         SELECT plan_date FROM daily_plans
         WHERE id = ? AND user_id = ?
@@ -756,8 +947,11 @@ def toggle_daily_plan(plan_id):
     )).fetchone()
 
     if plan is None:
+
         conn.close()
+
         flash("Daily plan not found.")
+
         return redirect(url_for("daily_planner"))
 
     selected_date = plan["plan_date"]
@@ -777,17 +971,19 @@ def toggle_daily_plan(plan_id):
     conn.commit()
     conn.close()
 
-    return redirect(url_for(
-        "daily_planner",
-        date=selected_date
-    ))
+    return redirect(
+        url_for("daily_planner", date=selected_date)
+    )
 
 
 # ==========================================
 # DELETE DAILY PLAN
 # ==========================================
 
-@app.route("/daily-plan/delete/<int:plan_id>", methods=["POST"])
+@app.route(
+    "/daily-plan/delete/<int:plan_id>",
+    methods=["POST"]
+)
 @login_required
 def delete_daily_plan(plan_id):
 
@@ -795,7 +991,6 @@ def delete_daily_plan(plan_id):
 
     conn = get_db()
 
-    # Get the plan date before deleting
     plan = conn.execute("""
         SELECT plan_date FROM daily_plans
         WHERE id = ? AND user_id = ?
@@ -805,8 +1000,11 @@ def delete_daily_plan(plan_id):
     )).fetchone()
 
     if plan is None:
+
         conn.close()
+
         flash("Daily plan not found.")
+
         return redirect(url_for("daily_planner"))
 
     selected_date = plan["plan_date"]
@@ -824,18 +1022,25 @@ def delete_daily_plan(plan_id):
 
     flash("Daily plan deleted.")
 
-    return redirect(url_for(
-        "daily_planner",
-        date=selected_date
-    ))
+    return redirect(
+        url_for("daily_planner", date=selected_date)
+    )
 
 
 # ==========================================
-# START APPLICATION
+# DATABASE INITIALIZATION
+# ==========================================
+
+# This runs when Flask starts and also when
+# Gunicorn imports the app on Render.
+
+create_table()
+
+
+# ==========================================
+# RUN APPLICATION
 # ==========================================
 
 if __name__ == "__main__":
-
-    create_table()
 
     app.run(debug=True)
